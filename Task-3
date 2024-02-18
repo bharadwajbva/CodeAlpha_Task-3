@@ -1,0 +1,77 @@
+import socket
+import struct
+
+def getMacAddr(myData):
+    myMAC = ":".join("{:02x}".format(ord(byte)) for byte in myData)
+    return myMAC
+
+try:
+    mySocket = socket.socket(socket.AF_PACKET, socket.SOCK_RAW, socket.ntohs(0x0003))
+except Exception as msg:
+    print('Socket could not be created. Error Code: ' + str(msg[0]) + ' Message: ' + msg[1])
+    sys.exit()
+
+while True:
+    packet = mySocket.recvfrom(65565)
+    myPacket = packet[0]
+    print("-" * 50)
+    myEthLength = 14
+    myEthHeader = myPacket[:myEthLength]
+    myEth = struct.unpack('!6s6sH', myEthHeader)
+    myEthProtocol = socket.ntohs(myEth[2])
+    if myEthProtocol == 8:
+        # Parse IP header
+        myIPHeader = myPacket[myEthLength: 20 + myEthLength]
+        iph = struct.unpack('!BBHHHBBH4s4s', myIPHeader)
+
+        version_ihl = iph[0]
+        version = version_ihl >> 4
+        ihl = version_ihl & 0xF
+        myIPHeaderLength = ihl * 4
+        ttl = iph[5]
+        protocol = iph[6]
+        mySrcIP = socket.inet_ntoa(iph[8])
+        myDstIP = socket.inet_ntoa(iph[9])
+        print('Version: ' + str(version) +
+              ' IP Header Length: ' + str(myIPHeaderLength) +
+              ' TTL: ' + str(ttl) +
+              ' Protocol: ' + str(protocol) +
+              ' Source IP: ' + str(mySrcIP) +
+              ' Destination IP: ' + str(myDstIP))
+
+        if protocol == 6:  
+            t = myIPHeaderLength + myEthLength
+            myTCPHeader = myPacket[t:t + 20]
+            tcph = struct.unpack('!HHHH', myTCPHeader)
+            mySrcPort = tcph[0]
+            myDstPort = tcph[1]
+            length = tcph[2]
+            checksum = tcph[3]
+            print('Source Port: ' + str(mySrcPort) +
+                  ' Dest Port: ' + str(myDstPort) +
+                  ' Length: ' + str(length) +
+                  ' Checksum: ' + str(checksum))
+            
+            myHeaderSize = myEthLength + myIPHeaderLength + 20
+            myPktData = myPacket[myHeaderSize:]
+            print('Data: ' + str(myPktData.decode('utf-8')))
+
+        elif protocol == 17:  
+            u = myIPHeaderLength + myEthLength
+            myUDPHeader = myPacket[u:u + 8]
+            udph = struct.unpack('!HHHH', myUDPHeader)
+            mySrcPort = udph[0]
+            myDstPort = udph[1]
+            length = udph[2]
+            checksum = udph[3]
+            print('Source Port: ' + str(mySrcPort) +
+                  ' Dest Port: ' + str(myDstPort) +
+                  ' Length: ' + str(length) +
+                  ' Checksum: ' + str(checksum))
+            
+            myHeaderSize = myEthLength + myIPHeaderLength + 8
+            myPktData = myPacket[myHeaderSize:]
+            print('Data: ' + str(myPktData.decode('utf-8')))
+
+        else:
+            print('Protocol other than TCP/UDP/ICMP')
